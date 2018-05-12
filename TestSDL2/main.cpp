@@ -1,38 +1,15 @@
 #include <exception>
-#include <string>
 #include <iostream>
+#include <string>
+#include <utility>
 #include <SDL.h>
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+#include <boost/beast/version.hpp>
+#include <boost/asio/connect.hpp>
+#include <boost/asio/ip/tcp.hpp>
 
-class InitError : public std::exception
-{
-    std::string msg;
-public:
-    InitError();
-    InitError( const std::string & );
-    virtual ~InitError() throw();
-    virtual const char * what() const throw();
-};
-
-InitError::InitError() :
-    exception(),
-    msg( SDL_GetError() )
-{
-}
-
-InitError::InitError( const std::string & m ) :
-    exception(),
-    msg( m )
-{
-}
-
-InitError::~InitError() throw()
-{
-}
-
-const char * InitError::what() const throw()
-{
-    return msg.c_str();
-}
+using namespace std::literals::string_literals;
 
 class SDL
 {
@@ -47,11 +24,11 @@ public:
 SDL::SDL( Uint32 flags )
 {
     if ( SDL_Init( flags ) != 0 )
-        throw InitError();
+        throw std::runtime_error("SDL_Init() failed.");
 
     if ( SDL_CreateWindowAndRenderer( 640, 480, SDL_WINDOW_SHOWN,
                                       &m_window, &m_renderer ) != 0 )
-        throw InitError();
+        throw std::runtime_error("SDL_CreateWindowAndRenderer() failed.");
 }
 
 SDL::~SDL()
@@ -93,21 +70,73 @@ void SDL::draw()
     }
 }
 
-int main( int argc, char * argv[] )
-{
-    try
-    {
+void test_http_request() {
+    const char* host = "www.example.com";
+    const char* port = "80";
+    const char* target = "/";
+
+    // The io_context is required for all I/O
+    boost::asio::io_context ioc;
+
+    using boost::asio::ip::tcp;
+    namespace http = boost::beast::http;
+
+    // These objects perform our I/O
+    tcp::resolver resolver{ioc};
+    tcp::socket socket{ioc};
+
+    // Look up the domain name
+    auto const results = resolver.resolve(host, port);
+
+    // Make the connection on the IP address we get from a lookup
+    boost::asio::connect(socket, results.begin(), results.end());
+
+    // Set up an HTTP GET request message
+    http::request<http::string_body> req{http::verb::get, target, 11}; // 11 = HTTP/1.1
+    req.set(http::field::host, host);
+
+    // Send the HTTP request to the remote host
+    http::write(socket, req);
+
+    // This buffer is used for reading and must be persisted
+    boost::beast::flat_buffer buffer;
+
+    // Declare a container to hold the response
+    http::response<http::string_body> res;
+
+    // Receive the HTTP response
+    http::read(socket, buffer, res);
+
+    // Gracefully close the socket
+    boost::system::error_code ec;
+    socket.shutdown(tcp::socket::shutdown_both, ec);
+
+    // not_connected happens sometimes
+    // so don't bother reporting it.
+    if(ec && ec != boost::system::errc::not_connected)
+        throw boost::system::system_error{ec};
+
+    // Show the message in a message box
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, ("Received from "s + host + ":" + port + " some data:").c_str(), std::move(res).body().c_str(), nullptr);
+}
+
+int main( int argc, char * argv[] ) {
+    try {
         SDL sdl( SDL_INIT_VIDEO | SDL_INIT_TIMER );
         sdl.draw();
-
-        return 0;
     }
-    catch ( const InitError & err )
-    {
-        std::cerr << "Error while initializing SDL:  "
-                  << err.what()
-                  << std::endl;
+    catch (const std::exception& err) {
+        std::cerr << "Error while initializing SDL:  " << err.what() << std::endl;
+        return 1;
     }
 
-    return 1;
+    try {
+        test_http_request();
+    }
+    catch (const std::exception& err) {
+        std::cerr << "Error when making HTTP request:  " << err.what() << std::endl;
+        return 2;
+    }
+
+    return 0;
 }
