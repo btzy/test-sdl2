@@ -62,8 +62,6 @@
 		<ExtraCommands>
 			<Add after="XCOPY $(#sdl2_x64.bin)\SDL2.dll $(TARGET_OUTPUT_DIR) /D /Y" />
 		</ExtraCommands>
-		<Unit filename="colorwindow.cpp" />
-		<Unit filename="colorwindow.hpp" />
 		<Unit filename="main.cpp" />
 		<Extensions>
 			<code_completion>
