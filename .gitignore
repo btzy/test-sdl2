@@ -32,5 +32,6 @@
 *.app
 
 # CodeBlocks files
+*.cbp
 *.depend
 *.layout
