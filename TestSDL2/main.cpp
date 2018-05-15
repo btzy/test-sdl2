@@ -15,7 +15,6 @@ using namespace std::literals::string_literals;
 
 
 void test_http_request() {
-
     const char* host = "www.example.com";
     const char* port = "80";
     const char* target = "/";
